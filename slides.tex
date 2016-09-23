@@ -1,0 +1,1734 @@
+\documentclass[aspectratio=169]{beamer}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb,amsfonts}
+%\usepackage{pgfpages}
+%\setbeameroption{show notes on second screen=right}
+\usepackage{listings}
+\lstset{ %
+%  columns=flexible,
+%  keepspaces=true,
+  language=[11]C++,
+  escapeinside={(*@}{@*)},
+  basicstyle=\ttfamily,
+  morekeywords={requires, concept}
+}
+\usepackage[
+    type={CC},
+    modifier={by},
+    version={4.0},
+]{doclicense}
+
+\newtheorem{claim}{Proposition}
+
+\usepackage{tikz}
+\usetikzlibrary{calc,shapes.multipart,chains,arrows, matrix}
+
+\usetheme{metropolis}
+
+\begin{document}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                                               TITLE SLIDE %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+\title   {From Zero to Iterators}
+\subtitle{Building and Extending the Iterator Hierarchy in a Modern,
+          Multicore World}
+\author  {Patrick M. Niedzielski \\ \texttt{pniedzielski.net}}
+\date[CppCon 2016]    {\hfill\includegraphics[width=0.3\textwidth]{cppcon}}
+\maketitle
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                                              INTRODUCTION %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+\begin{frame}[standout]
+  \only<1>{                                                        }
+  \only<2>{ I've heard of iterators before.                        }
+  \only<3>{ I've used iterators before.                            }
+  \only<4>{ I like iterators.                                      }
+  \only<5>{ I love iterators.                                      }
+  \only<6>{ I \emph{really} love iterators.                        }
+  \only<7>{ I think iterators are fundamental to computer science. }
+  \only<8>{                                                        }
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{The goal}
+  \begin{itemize}
+  \item[\checkmark\hspace{0.3em}] I've heard of iterators before.
+  \item[\checkmark\hspace{0.3em}] I've used iterators before.
+  \item[(\checkmark)]             I love iterators.
+  \item[$\times$\hspace{0.4em}]   I think iterators are fundamental to computer
+    science. \only<2>{ \hfill\small{\emph{(Ask me offline!)}} }
+  \end{itemize}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{How we'll get there}
+  \setbeamercovered{transparent}
+  \begin{itemize}
+    \Large
+  \item<1>[] Iterators 101: Introduction to Iterators
+  \item<2>[] Iterators 301: Advanced Iterators
+  \end{itemize}
+  \setbeamercovered{invisible}
+  \begin{center}
+    \onslide<3>{\Huge Generic Programming}
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{What this talk is not}
+  \begin{itemize}
+  \item An introduction to the STL.
+  \item A comprehensive guide to Concepts Lite.
+  \end{itemize}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{A note about questions}
+\end{frame}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                                           BASIC ITERATORS %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+\section{Iterators 101}
+
+
+
+% =========================================================================== %
+%                                                      Some simple algorithms %
+% =========================================================================== %
+
+
+
+\begin{frame}[fragile]{A simple starting point}
+\begin{lstlisting}
+template <typename T>
+T* copy(T const*  in, T const*  in_end,
+        T*       out, T*       out_end)
+{
+    while (in != in_end && out != out_end)  *out++ = *in++;
+    return out;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{A simple starting point}
+\begin{lstlisting}
+auto source      = array<T, 5>{ /* ... */ };
+auto destination = array<T, 10>{ /* ... */ };
+
+copy(
+    &source[0],      &source[0]      + size(source),
+    &destination[0], &destination[0] + size(destination)
+);
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{But we don't just deal with arrays\dots}
+\begin{lstlisting}
+template <typename T>
+struct node
+{
+    T     value;
+    node* next;
+};
+\end{lstlisting}
+  \pause{}
+  \begin{center}
+    \begin{tikzpicture}[
+      list/.style={rectangle split,
+               rectangle split parts=2,
+               draw,
+               rectangle split horizontal},
+      >=stealth,
+      start chain]
+
+      \node[list,on chain] (A) {T\{\dots\}};
+      \node[list,on chain] (B) {T\{\dots\}};
+      \node[list,on chain] (C) {T\{\dots\}};
+      \node[list,on chain] (D) {T\{\dots\}};
+      \node[list,on chain] (E) {T\{\dots\}};
+      \node[on chain,inner sep=1pt] (F) {\Large $\varnothing$};
+      \draw[*->] let \p1 = (A.two), \p2 = (A.center) in (\x1,\y2) -- (B);
+      \draw[*->] let \p1 = (B.two), \p2 = (B.center) in (\x1,\y2) -- (C);
+      \draw[*->] let \p1 = (C.two), \p2 = (C.center) in (\x1,\y2) -- (D);
+      \draw[*->] let \p1 = (D.two), \p2 = (D.center) in (\x1,\y2) -- (E);
+      \draw[*->] let \p1 = (E.two), \p2 = (E.center) in (\x1,\y2) -- (F);
+    \end{tikzpicture}
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{But we don't just deal with arrays\dots}
+  \small
+\begin{lstlisting}
+template <typename T>
+node<T>* copy(node<T> const*  in, node<T> const*  in_end,
+              node<T>*       out, node<T>*       out_end)
+{
+    while (in != in_end && out != out_end) {
+        out->value = in->value;
+        in  = in->next;
+        out = out->next;
+    }
+    return out;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{But we don't just deal with arrays\dots}
+  \small
+\begin{lstlisting}
+template <typename T>
+T* copy(node<T> const*  in, node<T> const*  in_end,
+        T*             out, T*             out_end)
+{
+    while (in != in_end && out != out_end) {
+        *out++ = in->value;
+        in = in->next;
+    }
+    return out;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{But we don't just deal with arrays\dots}
+  \small
+\begin{lstlisting}
+template <typename T>
+ostream& copy(T const* in, T const* in_end, ostream& out)
+{
+    while (in != in_end && out)  out << *in++;
+    return out;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[standout]
+  So what?
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{So what?}
+  \begin{columns}
+    \begin{column}{0.65\textwidth}
+      \begin{itemize}
+      \item Array $\to$ Array
+      \item Singly-Linked List $\to$ Singly-Linked List
+      \item Singly-Linked List $\to$ Array
+      \item Array $\to$ Stream
+      \end{itemize}
+      \pause{}
+      But also,
+      \begin{itemize}
+      \item Array $\to$ Singly-Linked List
+      \item Singly-Linked List $\to$ Stream
+      \item Stream $\to$ Array
+      \item Stream $\to$ Singly-Linked List
+      \item Stream $\to$ Stream
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.35\textwidth}
+      \Large$3 \times 3 = 9$ functions
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{So what?}
+  \begin{center}
+    \Large$4 \times 4 = 16$ functions
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{So what?}
+  \begin{center}
+    \Large$5 \times 5 = 25$ functions
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{So what?}
+  \begin{center}
+    \Large$6 \times 6 = 36$ functions
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{So what?}
+  \begin{center}
+    \Large$7 \times 7 = 49$ functions
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{So what?}
+  \begin{center}
+    \Large$7 \times 7 \alert{\times 2} = 98$ functions!
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{So what?}
+  \begin{center}
+    \Large$7 \times 7 \alert{\times 3} = 147$ functions!
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{So what?}
+  \begin{center}
+    \Large$7 \times 7 \alert{\times 4} = 196$ functions!
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{So what?}
+  \begin{center}
+    \large $m$ data structures, $n$ algorithms,\\
+    \Huge $n \cdot m^2$ functions!
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[standout]
+  We must be missing something.
+\end{frame}
+
+
+
+% =========================================================================== %
+%                                                                    Concepts %
+% =========================================================================== %
+
+
+\begin{frame}[fragile]{Let's back up.}
+  \pause{}
+\begin{lstlisting}
+template <typename T>
+(*@\alert{output}@*) copy((*@\alert{input sequence}@*), (*@\alert{output sequence}@*))
+{
+    while ((*@\alert{input not empty}@*) && (*@\alert{output not empty}@*)) {
+        (*@\alert{write output}@*) = (*@\alert{read input}@*);
+        (*@\alert{increment output}@*);
+        (*@\alert{increment input}@*);
+    }
+    return (*@\alert{output}@*);
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{Generalization}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      \begin{itemize}
+      \item \lstinline|T const*|
+      \item \lstinline|node<T> const*|
+      \item \lstinline|istream&|
+      \item \dots
+      \end{itemize}
+    \end{column}
+    \pause{}
+    \begin{column}{0.5\textwidth}
+      \begin{itemize}
+      \item \lstinline|T*|
+      \item \lstinline|node<T>*|
+      \item \lstinline|ostream&|
+      \item \dots
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \pause{}
+
+  \begin{center}
+    \Huge \alert{Iterators}
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Generalization}
+\begin{lstlisting}
+template <typename T>
+(*@\alert{output}@*) copy((*@\alert{input sequence}@*), (*@\alert{output sequence}@*))
+{
+    while ((*@\alert{input not empty}@*) && (*@\alert{output not empty}@*)) {
+        (*@\alert{write output}@*) = (*@\alert{read input}@*);
+        (*@\alert{increment output}@*);
+        (*@\alert{increment input}@*);
+    }
+    return (*@\alert{output}@*);
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Generalization}
+  \small
+\begin{lstlisting}
+template <typename InputIterator, typename OutputIterator>
+OutputIterator copy(InputIterator   in, InputIterator   in_end
+                    OutputIterator out, OutputIterator out_end)
+{
+    while (in != in_end && out != out_end) {
+        (*@\alert{write output}@*) = (*@\alert{read input}@*);
+        (*@\alert{increment output}@*);
+        (*@\alert{increment input}@*);
+    }
+    return out;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Generalization}
+  \small
+\begin{lstlisting}
+template <typename InputIterator, typename OutputIterator>
+OutputIterator copy(InputIterator   in, InputIterator   in_end
+                    OutputIterator out, OutputIterator out_end)
+{
+    while (in != in_end && out != out_end) {
+        (*@\alert{write output}@*) = source(in);  // e.g., *in
+        (*@\alert{increment output}@*);
+        (*@\alert{increment input}@*);
+    }
+    return out;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Generalization}
+  \small
+\begin{lstlisting}
+template <typename InputIterator, typename OutputIterator>
+OutputIterator copy(InputIterator   in, InputIterator   in_end
+                    OutputIterator out, OutputIterator out_end)
+{
+    while (in != in_end && out != out_end) {
+        sink(out) = source(in);     // e.g., *out
+        (*@\alert{increment output}@*);
+        (*@\alert{increment input}@*);
+    }
+    return out;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Generalization}
+  \small
+\begin{lstlisting}
+template <typename InputIterator, typename OutputIterator>
+OutputIterator copy(InputIterator   in, InputIterator   in_end
+                    OutputIterator out, OutputIterator out_end)
+{
+    while (in != in_end && out != out_end) {
+        sink(out) = source(in);
+        out = successor(out);
+        in  = successor(in);
+    }
+    return out;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Generalization}
+  \small
+\begin{lstlisting}
+inline auto const& source(auto const*       p) { return *p;       }
+inline auto const& source(node<auto> const* p) { return p->value; }
+
+inline auto& sink(auto*       p)               { return *p;       }
+inline auto& sink(node<auto>* p)               { return p->value; }
+
+inline auto successor(auto const*       p)     { return p + 1;    }
+inline auto successor(node<auto> const* p)     { return p->next;  }
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[standout]
+  Let's get formal.
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{What do we need?}
+  \footnotesize
+\begin{lstlisting}
+template <typename InputIterator, typename OutputIterator>
+OutputIterator copy(InputIterator   in, InputIterator   in_end
+                    OutputIterator out, OutputIterator out_end)
+{
+    while ((*@\alert<2->{in != in\_end}@*) && (*@\alert<2->{out != out\_end}@*)) {
+        sink(out) = source(in);
+        out = successor(out);
+        in  = successor(in);
+    }
+    return out;
+}
+\end{lstlisting}
+  \pause{}
+  \begin{center}
+    \Large Equality Comparison
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{What do we need?}
+  \footnotesize
+\begin{lstlisting}
+template <typename InputIterator, typename OutputIterator>
+OutputIterator copy(InputIterator   in, InputIterator   in_end
+                    OutputIterator out, OutputIterator out_end)
+{
+    while (in != in_end && out != out_end) {
+        sink(out) = source(in);
+        (*@\alert{out = successor(out)}@*);
+        (*@\alert{in \ = successor(in)}@*);
+    }
+    return out;
+}
+\end{lstlisting}
+  \begin{center}
+    \Large Assignment
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{What do we need?}
+  \footnotesize
+\begin{lstlisting}
+template <typename InputIterator, typename OutputIterator>
+OutputIterator copy((*@\alert{InputIterator \ \ in}@*), (*@\alert{InputIterator \ \ in\_end}@*)
+                    (*@\alert{OutputIterator out}@*), (*@\alert{OutputIterator out\_end}@*))
+{
+    while (in != in_end && out != out_end) {
+        sink(out) = source(in);
+        out = successor(out);
+        in  = successor(in);
+    }
+    return out;
+}
+\end{lstlisting}
+  \begin{center}
+    \Large Construction
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{What do we need?}
+  \footnotesize
+\begin{lstlisting}
+template <typename InputIterator, typename OutputIterator>
+OutputIterator copy(InputIterator   in, InputIterator   in_end
+                    OutputIterator out, OutputIterator out_end)
+{
+    while (in != in_end && out != out_end) {
+        sink(out) = source(in);
+        out = successor(out);
+        in  = successor(in);
+    }
+    return out;
+(*@\alert{\}}@*)
+\end{lstlisting}
+  \begin{center}
+    \Large Destruction
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{What do we need?}
+  \footnotesize
+\begin{lstlisting}
+template <typename InputIterator, typename OutputIterator>
+OutputIterator copy(InputIterator   in, InputIterator   in_end
+                    OutputIterator out, OutputIterator out_end)
+{
+    while (in != in_end && out != out_end) {
+        sink(out) = source(in);
+        out = (*@\alert{successor}@*)(out);
+        in  = (*@\alert{successor}@*)(in);
+    }
+    return out;
+}
+\end{lstlisting}
+  \begin{center}
+    \Large \texttt{successor()}
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{What do we need?}
+  \footnotesize
+\begin{lstlisting}
+template <typename InputIterator, typename OutputIterator>
+OutputIterator copy(InputIterator   in, InputIterator   in_end
+                    OutputIterator out, OutputIterator out_end)
+{
+    while (in != in_end && out != out_end) {
+        sink(out) = (*@\alert{source}@*)(in);
+        out = successor(out);
+        in  = successor(in);
+    }
+    return out;
+}
+\end{lstlisting}
+  \begin{center}
+    \Large \texttt{source()}
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{What do we need?}
+  \footnotesize
+\begin{lstlisting}
+template <typename InputIterator, typename OutputIterator>
+OutputIterator copy(InputIterator   in, InputIterator   in_end
+                    OutputIterator out, OutputIterator out_end)
+{
+    while (in != in_end && out != out_end) {
+        (*@\alert{sink}@*)(out) = source(in);
+        out = successor(out);
+        in  = successor(in);
+    }
+    return out;
+}
+\end{lstlisting}
+  \begin{center}
+    \Large \texttt{sink()}
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{What do we need?}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      \centerline{\texttt{InputIterator}}
+      \begin{itemize}
+      \item[] \onslide<2->{\texttt{Regular}}
+        \begin{itemize}
+        \item Constructible
+        \item Destructible
+        \item Assignable
+        \item Equality Comparable
+        \end{itemize}
+      \item[] \onslide<3->{\texttt{Iterator}}
+        \begin{itemize}
+        \item \texttt{successor()}
+        \end{itemize}
+      \item[] \onslide<4->{\texttt{Readable}}
+        \begin{itemize}
+        \item \texttt{source()}
+        \end{itemize}
+      \end{itemize}
+    \end{column}
+
+    \begin{column}{0.5\textwidth}
+      \centerline{\texttt{OutputIterator}}
+      \begin{itemize}
+      \item[] \onslide<2->{\texttt{Regular}}
+        \begin{itemize}
+        \item Constructible
+        \item Destructible
+        \item Assignable
+        \item Equality Comparable
+        \end{itemize}
+      \item[] \onslide<3->{\texttt{Iterator}}
+        \begin{itemize}
+        \item \texttt{successor()}
+        \end{itemize}
+      \item[] \onslide<4->{\texttt{Writable}}
+        \begin{itemize}
+        \item \texttt{sink()}
+        \end{itemize}
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[standout]
+  Concepts!
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Concepts!}
+\begin{lstlisting}
+template <typename T>
+concept bool Concept = /* constexpr boolean expression */;
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Concepts!}
+\begin{lstlisting}
+template <typename T>
+concept bool Regular =
+       is_default_constructible_v<T>
+    && is_copy_constructible_v<T>
+    && is_destructible_v<T>
+    && is_copy_assignable_v<T>
+    && (*@\alert<2->{is\_equality\_comparable\_v}@*)<T>;
+\end{lstlisting}
+  \pause{}
+  \pause{}
+  \begin{center}
+    \Large Doesn't exist.
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Concepts!}
+\begin{lstlisting}
+template <typename T>
+concept bool Regular =
+       is_default_constructible_v<T>
+    && is_copy_constructible_v<T>
+    && is_destructible_v<T>
+    && is_copy_assignable_v<T>
+    && (*@$\forall \mathtt{x}, \mathtt{y} \in \mathtt{T}$@*):
+          1. x == y can be used in boolean contexts
+          2. == induces an equivalence relation on T
+          3. Iff x == y, x and y represent the same value
+    ;
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Concepts!}
+\begin{lstlisting}
+template <typename T>
+concept bool Regular =
+       is_default_constructible_v<T>
+    && is_copy_constructible_v<T>
+    && is_destructible_v<T>
+    && is_copy_assignable_v<T>
+    && requires(T x, T y) {
+          1. x == y can be used in boolean contexts
+          2. == induces an equivalence relation on T
+          3. Iff x == y, x and y represent the same value
+       };
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Concepts!}
+\begin{lstlisting}
+template <typename T>
+concept bool Regular =
+       is_default_constructible_v<T>
+    && is_copy_constructible_v<T>
+    && is_destructible_v<T>
+    && is_copy_assignable_v<T>
+    && requires(T x, T y) {
+          { x == y } -> bool;
+          2. == induces an equivalence relation on T
+          3. Iff x == y, x and y represent the same value
+       };
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Concepts!}
+\begin{lstlisting}
+template <typename T>
+concept bool Regular =
+       is_default_constructible_v<T>
+    && is_copy_constructible_v<T>
+    && is_destructible_v<T>
+    && is_copy_assignable_v<T>
+    && requires(T x, T y) {
+          { x == y } -> bool;
+          // == induces an equivalence relation on T
+          // Iff x == y, x and y represent the same value
+       };
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Concepts!}
+\begin{lstlisting}
+template <typename T>
+concept bool Readable =
+    requires (T x) {
+        typename value_type<T>;
+        { source(x) } -> value_type<T> const&;  // (*@$\mathcal{O}(1)$@*)
+    };
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Concepts!}
+\begin{lstlisting}
+template <typename T>
+concept bool Writable =
+    requires (T x) {
+        typename value_type<T>;
+        { sink(x) } -> value_type<T>&;  // (*@$\mathcal{O}(1)$@*)
+    };
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Concepts!}
+\begin{lstlisting}
+template <typename I>
+concept bool Iterator =
+    Regular<I> &&
+    requires (I i) {
+        { successor(i) } -> I;  // (*@$\mathcal{O}(1)$@*)
+          // successor() may mutate other iterators.
+    };
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Concepts!}
+  \footnotesize
+\begin{lstlisting}
+template <typename InputIterator, typename OutputIterator>
+OutputIterator copy(InputIterator   in, InputIterator   in_end
+                    OutputIterator out, OutputIterator out_end)
+{
+    while (in != in_end && out != out_end) {
+        sink(out) = source(in);
+        out = successor(out);
+        in  = successor(in);
+    }
+    return out;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Concepts!}
+  \footnotesize
+\begin{lstlisting}
+template <typename InputIterator, typename OutputIterator>
+    requires Iterator<InputIterator>
+          && Readable<InputIterator>
+          && Iterator<OutputIterator>
+          && Writable<OutputIterator>
+OutputIterator copy(InputIterator   in, InputIterator   in_end
+                    OutputIterator out, OutputIterator out_end)
+{
+    while (in != in_end && out != out_end) {
+        sink(out) = source(in);
+        out = successor(out);
+        in  = successor(in);
+    }
+    return out;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Concepts!}
+  \footnotesize
+\begin{lstlisting}
+template <typename In, typename Out>
+    requires Iterator<In>
+          && Readable<In>
+          && Iterator<Out>
+          && Writable<Out>
+Out copy(In in, In in_end, Out out, Out out_end)
+{
+    while (in != in_end && out != out_end) {
+        sink(out) = source(in);
+        out = successor(out);
+        in  = successor(in);
+    }
+    return out;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Concepts!}
+\begin{lstlisting}
+template <Iterator In, Iterator Out>
+    requires Readable<In> && Writable<Out>
+Out copy(In in, In in_end, Out out, Out out_end)
+{
+    while (in != in_end && out != out_end) {
+        sink(out) = source(in);
+        out = successor(out);
+        in  = successor(in);
+    }
+    return out;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{More algorithms}
+\begin{lstlisting}
+template <Iterator It>
+    requires Writable<It>
+void fill(It it, It it_end, value_type<It> const& x)
+{
+    while (in != in_end) {
+        sink(out) = x;
+        it = successor(it);
+    }
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{More algorithms}
+  \small
+\begin{lstlisting}
+template <Iterator It, Function<value_type<It>, value_type<It>> Op>
+    requires Readable<It>
+auto fold(It it, It it_end, value_type<It> acc, Op op)
+{
+    while (in != in_end) {
+        acc = op(acc, source(it));
+        it = successor(it);
+    }
+    return acc;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{More algorithms}
+\begin{lstlisting}
+template <Iterator It>
+    requires Readable<It>
+It find_first(It it, It it_end, value_type<It> const& value)
+{
+    while (it != it_end && source(it) != value)
+        it = successor(it);
+    return it;
+}
+\end{lstlisting}
+\end{frame}
+
+
+
+% =========================================================================== %
+%                                                         Multipass Iterators %
+% =========================================================================== %
+
+
+\subsection{Moving Forward}
+
+\begin{frame}[fragile]{Moving Forward}
+  \pause{}
+
+\begin{lstlisting}
+template <Iterator It>
+    requires Readable<It>
+It max_element(It it, It it_end)
+{
+    auto max_it = it;
+    while (it != it_end) {
+        if (source(it) > source(max_it))  max_it = it;
+        it = successor(it);
+    }
+    return max_it;
+}
+\end{lstlisting}
+  \pause{}
+  \centerline{\Huge No!}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Moving Forward}
+\begin{lstlisting}
+template <typename I>
+concept bool Iterator =
+    Regular<I> &&
+    requires (I i) {
+        { successor(i) } -> I;  // (*@$\mathcal{O}(1)$@*)
+          // (*@\alert<2->{successor may mutate other iterators}@*)
+    };
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Moving Forward}
+\begin{lstlisting}
+template <typename I>
+concept bool (*@\alert{Forward}@*)Iterator =
+    Regular<I> &&
+    requires (I i) {
+        { successor(i) } -> I;  // (*@$\mathcal{O}(1)$@*)
+
+    };
+\end{lstlisting}
+
+  \pause{}
+  \centerline{\Large \textbf{Multi-pass Guarantee}}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Moving Forward}
+\begin{lstlisting}
+template <(*@\alert{Forward}@*)Iterator It>
+    requires Readable<It>
+It max_element(It it, It it_end)
+{
+    auto max_it = it;
+    while (it != it_end) {
+        if (source(it) > source(max_it))  max_it = it;
+        it = successor(it);
+    }
+    return max_it;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Moving Forward}
+  \begin{claim}
+    If a type \texttt{T} models \texttt{ForwardIterator}, it also
+    models \texttt{Iterator}.
+  \end{claim}
+  \pause{}
+  \begin{center}
+    A \texttt{ForwardIterator} is just an \texttt{Iterator} that
+    doesn't mutate other iterators in \texttt{successor()}!
+  \end{center}
+\end{frame}
+
+% -----------------------------------------------------------------------------%
+
+\subsection{Stronger Guarantees}
+
+\begin{frame}[fragile]{Backing Up}
+  \pause{}
+  \small
+\begin{lstlisting}
+template <??? I>
+    requires Readable<I> && Writable<I>
+I reverse(I it_begin, I it_end)
+{
+    while (it_begin != it_end) {
+        it_end = (*@\alert<3->{predecessor}@*)(it_end);
+        if (it_begin == it_end)  break;
+
+        auto temp      = source(it_end);
+        sink(it_end)   = source(it_begin);
+        sink(it_begin) = temp;
+
+        it_begin = successor(it_begin);
+    }
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Backing Up}
+\begin{lstlisting}
+template <typename I>
+concept bool (*@\alert{Bidirectional}@*)Iterator =
+    Regular<I> &&
+    requires (I i) {
+        { successor(i)   } -> I;  // (*@$\mathcal{O}(1)$@*)
+        { predecessor(i) } -> I;  // (*@$\mathcal{O}(1)$@*)
+          // i == predecessor(successor(i));
+    };
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Backing Up}
+  \small
+\begin{lstlisting}
+template <(*@BidirectionalIterator@*) I>
+    requires Readable<I> && Writable<I>
+I reverse(I it_begin, I it_end)
+{
+    while (it_begin != it_end) {
+        it_end = predecessor(it_end);
+        if (it_begin == it_end)  break;
+
+        auto temp      = source(it_end);
+        sink(it_end)   = source(it_begin);
+        sink(it_begin) = temp;
+
+        it_begin = successor(it_begin);
+    }
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Backing Up}
+  \small
+\begin{lstlisting}
+template <(*@\alert{BidirectionalIterator}@*) I>
+    requires Readable<I> && Writable<I>
+I reverse(I it_begin, I it_end)
+{
+    while (it_begin != it_end) {
+        it_end = predecessor(it_end);
+        if (it_begin == it_end)  break;
+
+        auto temp      = source(it_end);
+        sink(it_end)   = source(it_begin);
+        sink(it_begin) = temp;
+
+        it_begin = successor(it_begin);
+    }
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Backing Up}
+  \begin{claim}
+    If a type \texttt{T} models \texttt{BidirectionalIterator}, it also
+    models \texttt{ForwardIterator}.
+  \end{claim}
+  \pause{}
+  \begin{center}
+    A \texttt{BidirectionalIterator} has a \texttt{successor()}
+    function that does not mutate other iterators.
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Backing Up}
+  \begin{claim}
+    If a type \texttt{T} models \texttt{BidirectionalIterator}, its
+    dual also models \texttt{BidirectionalIterator}.
+  \end{claim}
+  \pause{}
+  \begin{center}
+    Let's define a type whose \texttt{successor()} is our old
+    \texttt{predecessor()} and whose \texttt{predecessor()} is our old
+    \texttt{successor()}.  This new type also models
+    \texttt{BidirectionalIterator}.
+  \end{center}
+  \pause
+  \begin{center}
+    We call the dual of a \texttt{BidirectionalIterator} a
+    \textit{reverse iterator}.
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Jumping Around}
+  \pause{}
+  \small
+\begin{lstlisting}
+template <ForwardIterator It>
+void increment(It& i, size_t n)
+{
+    // Precondition: n >= 0
+    for (auto i = 0; i < n; ++i)  i = successor(i);
+}
+(*@\pause{}@*)
+void increment(auto*& i, size_t n)
+{
+    // Precondition: n >= 0
+    i += n;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Jumping Around}
+  \small
+\begin{lstlisting}
+template <BidirectionalIterator It>
+void decrement(It& i, size_t n)
+{
+    // Precondition: n >= 0
+    for (auto i = 0; i < n; ++i)  i = predecessor(i);
+}
+
+void decrement(auto*& i, size_t n)
+{
+    // Precondition: n >= 0
+    i -= n;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Jumping Around}
+  \footnotesize
+\begin{lstlisting}
+template <typename I>
+concept bool RandomAccessIterator =
+       Regular<I>
+    && WeaklyOrdered<I>
+    && requires (I i, I j, size_t n) {
+           { i + n } -> I;       // (*@$\mathcal{O}(1)$@*)
+             // i + 0 == i                        if n == 0
+             // i + n == successor(i) + n - 1     if n >  0
+             // i + n == predecessor(i) + n + 1   if n <  0
+           { i - n } -> I;       // (*@$\mathcal{O}(1)$@*)
+             // i - 0 == i                        if n == 0
+             // i - n == predecessor(i) - (n - 1) if n >  0
+             // i - n == successor(i) - (n + 1)   if n <  0
+           { i - j } -> size_t;  // (*@$\mathcal{O}(1)$@*)
+             // i + (i - j) = i
+       };
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Jumping Around}
+  \footnotesize
+\begin{lstlisting}
+template <RandomAccessIterator It>
+    requires Readable<It> && WeaklyOrdered<value_type<It>>
+I upper_bound(It it, It it_end, value_type<It> x)
+{
+    // Base case.
+    if (it == it_end)  return it_end;
+
+    // mid_dist is always less than or equal to end - begin,
+    // because of integer division
+    auto mid_dist = (it_end - it) / 2;
+    auto mid = it + mid_dist;
+
+    // Reduce problem size.
+    if (source(mid) <= x)  return upper_bound(mid + 1,  it_end, x);
+    else                   return upper_bound(     it, mid + 1, x);
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Jumping Around}
+  \begin{claim}
+    If a type \texttt{T} models \texttt{RandomAccessIterator}, it also
+    models \texttt{BidirectionalIterator}.
+  \end{claim}
+  \pause{}
+  \begin{center}
+    Let's define \texttt{successor()} on an object \texttt{x} of type
+    \texttt{T} to return \texttt{x + 1}.  Similarly, let's define
+    \texttt{predecessor()} to return \texttt{x - 1}.
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{The story so far}
+  \small
+  \begin{center}
+    \begin{tikzpicture}
+      \begin{scope}[fill opacity=0.5]
+        \fill[lightgray] (0,0)      circle (3cm);
+        \fill[lightgray] (0,-0.5cm) circle (2.5cm);
+        \fill[lightgray] (0,-1cm)   circle (2cm);
+        \fill[lightgray] (0,-1.5cm) circle (1.5cm);
+        \draw (0,0)      circle (3cm)   node[above=2.125cm] {\texttt{Iterator}};
+        \draw (0,-0.5cm) circle (2.5cm) node[above=1.625cm] {\texttt{Forward}};
+        \draw (0,-1cm)   circle (2cm)   node[above=1.125cm] {\texttt{Bidir}};
+        \draw (0,-1.5cm) circle (1.5cm) node[above=0.625cm] {\texttt{Random}};
+      \end{scope}
+    \end{tikzpicture}
+  \end{center}
+\end{frame}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                     EXTENDING THE ITERATOR HIERARCHY                      %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+\section{Extending the Iterator Hierarchy}
+
+\subsection{Contiguous Iterators}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[standout]
+  Pop Quiz!
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[standout]
+  Can I \texttt{memmove} a \texttt{RandomAccess} sequence of
+  \texttt{byte}s?
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Let's look at the concept}
+  \footnotesize
+\begin{lstlisting}
+template <typename I>
+concept bool RandomAccessIterator =
+       Regular<I>
+    && WeaklyOrdered<I>
+    && requires (I i, I j, size_t n) {
+           { i + n } -> I;       // (*@$\mathcal{O}(1)$@*)
+             // i + 0 == i                        if n == 0
+             // i + n == successor(i) + n - 1     if n >  0
+             // i + n == predecessor(i) + n + 1   if n <  0
+           { i - n } -> I;       // (*@$\mathcal{O}(1)$@*)
+             // i - 0 == i                        if n == 0
+             // i - n == predecessor(i) - (n - 1) if n >  0
+             // i - n == successor(i) - (n + 1)   if n <  0
+           { i - j } -> size_t;  // (*@$\mathcal{O}(1)$@*)
+             // i + (i - j) = i
+       };
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[standout]
+  No!
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{A counterexample}
+  \small
+\begin{lstlisting}
+template <Regular T>
+struct segmented_array {
+    vector< vector<T> > data;
+    // where each inner vector except the last has size segsize
+};
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{A counterexample}
+  \small
+\begin{lstlisting}
+template <Regular T>
+struct segmented_array_iterator {
+    vector<T>* spine_iter;
+    size_t     inner_index;
+};
+
+template <Regular T>
+segmented_array_iterator<T> operator+(
+    segmented_array_iterator<T> it, size_t n)
+{
+    return segmented_array_iterator<T>{
+        it.spine_iter + (it.inner_index + n) / segsize,
+        (it.inner_index + n) % segsize
+    };
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{What does \texttt{memmove} need?}
+  \begin{itemize}
+  \item<2-> Trivially copyable data, that is
+  \item<3-> contiguous in memory.
+  \end{itemize}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{What does contiguous mean?}
+  \pause{}
+\begin{lstlisting}
+auto i = /* ... */;
+auto j = /* ... */;
+pointer_from(i + n) == pointer_from(i) + n;
+pointer_from(i - n) == pointer_from(i) - n;
+pointer_from(i - j) == pointer_from(i) - pointer_from(j);
+\end{lstlisting}
+  \pause{}
+  \begin{center}
+    There must be an homomorphism \texttt{pointer\_from} that preserves
+    the range structure.
+  \end{center}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{The simplest homomorphism}
+\begin{lstlisting}
+auto* pointer_from(auto* i) { return i; }
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{The slightly less simple homomorphism}
+\begin{lstlisting}
+template <typename T>
+using base_offset_iterator = pair<T*, size_t>;
+
+auto* pointer_from(base_offset_iterator<auto> i)
+{
+    return i.first + i.second;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Looks like we have a new concept!}
+\begin{lstlisting}
+template <typename T>
+concept bool ContiguousIterator =
+       RandomAccessIterator<T>
+    && requires (T i) {
+           typename value_type<T>;
+           { pointer_from(i) } -> value_type<T> const*;
+             // pointer_from homomorphism preserves range
+             // structure
+       };
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Looks like we have a new concept!}
+\begin{lstlisting}
+template <ContiguousIterator In, ContiguousIterator Out>
+    requires Readable<In> && Writable<Out>
+          && is_same_v< value_type<In>, value_type<Out> >
+          && is_trivially_copyable_v< value_type<In> >
+Out copy(In in, In in_end, Out out, Out out_end)
+{
+    auto count = min( in_end - in, out_end - out );
+    memmove(pointer_from(out), pointer_from(in), count);
+    return out_end;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile,fragile]{Segmentation Problems}
+  \pause{}
+\begin{lstlisting}
+template <Regular T>
+struct segmented_array {
+    vector< vector<T> > data;
+    // where each inner vector except the last has size segsize
+};
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Segmentation Problems}
+  \scriptsize
+\begin{lstlisting}
+template <SegmentedIterator In, Iterator Out>
+    requires Readable<In> && Writable<Out>
+Out copy(In in, In in_end, Out out, Out out_end)
+{
+    auto seg     = segment(in);
+    auto seg_end = segment(in_end);
+
+    if (seg == seg_end)  copy(local(in), local(in_end), out, out_end);
+    else {
+        out = copy(local(in), end(seg), out, out_end);
+
+        seg = successor(seg);
+        while (seg != seg_end) {
+            out = copy(begin(seg), end(seg), out, out_end);
+            seg = successor(seg);
+        }
+        return copy(begin(seg), local(in_end), out, out_end);
+    }
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Segmentation Problems}
+  \small
+\begin{lstlisting}
+template <typename T>
+concept bool SegmentedIterator =
+       Iterator<T>
+    && requires (T i) {
+           typename local_iterator<T>;
+           typename segment_iterator<T>;
+
+           requires Iterator<local_iterator>;
+           requires Iterator<segment_iterator>;
+           requires Range<segment_iterator>;  // begin(), end()
+
+           { local(i)   } -> local_iterator<T>;
+           { segment(i) } -> segment_iterator<T>;
+       };
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Segmentation Problems}
+  \footnotesize
+\begin{lstlisting}
+// Associated types
+template <typename T>
+using local_iterator< segmented_array_iterator<T> > = T*;
+template <typename T>
+using segment_iterator< segmented_array_iterator<T> > = vector<T>*;
+
+// Inner iterator range (dirty, to fit on slides!)
+auto begin(vector<auto>* vec) { return vec->begin(); }
+auto end(vector<auto>* vec)   { return vec->end();   }
+
+// Access functions
+auto local(segmented_array_iterator<auto> it) {
+    return &it->spine_iter[it->inner_index];
+}
+auto segment(segmented_array_iterator<auto> it) {
+    return it->spine_iter;
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{\texttt{SegmentedIterator}s are great for
+    parallelization.}
+  \pause{}
+  \footnotesize
+\begin{lstlisting}
+template <RandomAccessIterator In, SegmentedIterator Out>
+    requires Readable<In> && Writable<Out>
+          && RandomAccessIterator<Out>
+Out copy(In in, In in_end, Out out, Out out_end)
+{
+    auto& task_pool = get_global_task_pool();
+
+    auto seg     = segment(out);
+    auto seg_end = segment(out_end);
+
+    if (seg == seg_end) {
+        // ...
+    } else {
+        // ...
+    }
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{\texttt{SegmentedIterator}s are great for
+    parallelization.}
+  \footnotesize
+\begin{lstlisting}
+if (seg == seg_end) {
+    return copy(in, in_end, local(out), local(out_end));
+} else {
+    // ...
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{\texttt{SegmentedIterator}s are great for
+    parallelization.}
+  \footnotesize
+\begin{lstlisting}
+} else {
+    task_pool.add_task(copy, in, in_end, local(out), end(seg_end));
+
+    seg = successor(seg);
+    in = in + min(in_end - in, end(seg_end) - local(out));
+    while (seg != seg_end) {
+        task_pool.add_task(copy, in, in_end, begin(seg), end(seg));
+
+        seg = successor(seg);
+        in = in + min(in_end - in, end(seg) - begin(seg));
+    }
+
+    task_pool.add_task(copy, in, in_end, begin(seg), local(out_end));
+    return out + min(in_end - in, local(out_end) - begin(out));
+}
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[standout]
+  But wait!
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[standout]
+  \texttt{SegmentedIterator}s are great for parallelization.
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[standout]
+  \texttt{ContiguousIterator}s are great for bit blasting.
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[standout]
+  What if we combine them?
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[fragile]{Cache-awareness}
+\begin{lstlisting}
+template <typename T>
+concept bool CacheAwareIterator =
+       SegmentedIterator<T>
+    && ContiguousIterator<T>;
+\end{lstlisting}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{Cache-awareness}
+  Since,
+  \begin{itemize}
+  \item<1-> each thread is fed its own set of cache lines,
+  \item<2-> no two threads will be writing to the same cache lines,
+  \item<3-> no \textit{false-sharing}.
+  \end{itemize}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[standout]
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}{References}
+  \begin{itemize}
+  \item Austern, Matthew H (1998). \textit{Segmented Iterators and
+      Hierarchical Algorithms}. In Proceedings of \textit{Generic Programming:
+      International Seminar, Dagstuhl Castle, Germany}.
+  \item Liber, Nevin (2014).  \textit{N3884 --- Contiguous Iterators:
+      A Refinement of Random Access Iterators}.
+  \item Stepanov, Alexander and Paul McJones (2009).  \textit{Elements
+      of Programming}.
+  \end{itemize}
+\end{frame}
+
+% --------------------------------------------------------------------------- %
+
+\begin{frame}[standout]
+  Patrick M. Niedzielski
+
+  \url{pniedzielski.net}
+
+  \vfill
+  \footnotesize{
+    \doclicenseThis
+  }
+\end{frame}
+
+\end{document}
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% TeX-engine: xetex
+%%% End:
